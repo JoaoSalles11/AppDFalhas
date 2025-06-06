@@ -195,18 +195,58 @@ export default function FaultControlSystem() {
     }))
   }
 
+  const getRecommendedSolution = (faultType: string) => {
+    const solutions: Record<string, string> = {
+      "1 – DISPOSIÇÃO INCORRETA NO PALLET": "REALINHAR PADRÃO DE PALETIZAÇÃO E FAZER NOVA BUSCA COM O ROBÔ.",
+      "2 – LIMPEZA":
+        "REALIZAR LIMPEZA COMPLETA DO SISTEMA. VERIFICAR SENSORES, LENTES DE CÂMERAS E SUPERFÍCIES DE CONTATO. SEGUIR PROCEDIMENTO DE HIGIENIZAÇÃO PADRÃO.",
+      "3 – CAIXA NÃO ABRIU APÓS CORTE":
+        "VERIFICAR SISTEMA DE CORTE E ABERTURA DE CAIXAS E AJUSTAR PRESSÃO E TIMING DO MECANISMO DE ABERTURA. INSPECIONAR LÂMINAS DE CORTE.",
+      "4 – GARRA DO ROBO LEU ERRADO E BATEU NA CAIXA":
+        "CALIBRAR SISTEMA DE VISÃO DA GARRA. VERIFICAR ILUMINAÇÃO E POSICIONAMENTO DAS CÂMERAS. AJUSTAR ALGORITMO DE DETECÇÃO DE POSIÇÃO.",
+      "5 – CAIXA MAL SELADA NA PARTE INFERIOR":
+        "VERIFICAR SELAGEM DA CAIXA E OBSERVAR SE EXISTEM DEMAIS EXEMPLARES ASSIM E FAZER A CORREÇÃO NECESSÁRIA.",
+      "6 – CAIXA DEFORMADA (PESO)":
+        "VERIFICAR SE AS DEMAIS CAIXAS ESTÃO COM PESO ALÉM DO MÁXIMO SUPORTADO PELO ROBÔ. AJUSTAR FORÇA DE MANIPULAÇÃO (CAIXA LEVE & CAIXA PESADA).",
+      "7 – CAIXA CAIU APÓS CHACOALHAR OS BOMBONS":
+        "VERIFICAR SE EXISTE ALGUMA OBSTRUÇÃO NO SISTEMA DE VÁCUO (FITA ADESIVA OU SUJIDADE). AJUSTAR VELOCIDADE DE MOVIMENTAÇÃO SE NECESSÁRIO.",
+      "8 – CAIXAS NÃO UNIFORMES NA LATERAL":
+        "VERIFICAR ALINHAMENTO DAS DEMAIS CAIXAS, REALIZAR TROCA DE PALLET CASO NECESSÁRIO. INSPECIONAR QUALIDADE DO PAPELÃO (UMIDADE).",
+      "0 – OUTRO (ESPECIFIQUE NAS OBSERVAÇÕES)":
+        "USE AS OBSERVAÇÕES PARA DETALHES ESPECÍFICOS DO PROBLEMA. REALIZE DIAGNÓSTICO DETALHADO CONFORME PROCEDIMENTO PADRÃO.",
+    }
+
+    return (
+      solutions[faultType] ||
+      "CONSULTE O MANUAL TÉCNICO E ENTRE EM CONTATO COM A EQUIPE DE MANUTENÇÃO PARA DIAGNÓSTICO DETALHADO."
+    )
+  }
+
+  const validateForm = () => {
+    const missingFields: string[] = []
+
+    if (!formData.date.trim()) missingFields.push("Data")
+    if (!formData.time.trim()) missingFields.push("Horário")
+    if (!formData.fault.trim()) missingFields.push("Falha")
+    if (!formData.downtime.trim()) missingFields.push("Tempo Parado")
+    if (!formData.manualBoxes.trim()) missingFields.push("Carregou Caixas Manual")
+    if (!formData.robotNumber.trim()) missingFields.push("Numero Robo")
+    if (!formData.cuba.trim()) missingFields.push("Cuba")
+    if (!formData.product.trim()) missingFields.push("Produto")
+
+    return missingFields
+  }
+
+  const isFormValid = () => {
+    return validateForm().length === 0
+  }
+
   const handleAddRecord = () => {
-    if (
-      !formData.date ||
-      !formData.time ||
-      !formData.fault ||
-      !formData.downtime ||
-      !formData.manualBoxes ||
-      !formData.robotNumber ||
-      !formData.cuba ||
-      !formData.product
-    ) {
-      alert("Por favor, preencha todos os campos obrigatórios.")
+    const missingFields = validateForm()
+
+    if (missingFields.length > 0) {
+      const fieldList = missingFields.join(", ")
+      alert(`Por favor, preencha os seguintes campos obrigatórios:\n\n${fieldList}`)
       return
     }
 
@@ -320,33 +360,6 @@ export default function FaultControlSystem() {
         "3. Selecione o arquivo JSON baixado\n" +
         "4. Configure suas visualizações\n\n" +
         "O arquivo contém todos os dados de falhas com metadados para análise completa.",
-    )
-  }
-
-  const getRecommendedSolution = (faultType: string) => {
-    const solutions: Record<string, string> = {
-      "1 – DISPOSIÇÃO INCORRETA NO PALLET": "REALINHAR PADRÃO DE PALETIZAÇÃO E FAZER NOVA BUSCA COM O ROBÔ.",
-      "2 – LIMPEZA":
-        "REALIZAR LIMPEZA COMPLETA DO SISTEMA. VERIFICAR SENSORES, LENTES DE CÂMERAS E SUPERFÍCIES DE CONTATO. SEGUIR PROCEDIMENTO DE HIGIENIZAÇÃO PADRÃO.",
-      "3 – CAIXA NÃO ABRIU APÓS CORTE":
-        "VERIFICAR SISTEMA DE CORTE E ABERTURA DE CAIXAS E AJUSTAR PRESSÃO E TIMING DO MECANISMO DE ABERTURA. INSPECIONAR LÂMINAS DE CORTE.",
-      "4 – GARRA LEU ERRADO E BATEU NA CAIXA":
-        "CALIBRAR SISTEMA DE VISÃO DA GARRA. VERIFICAR ILUMINAÇÃO E POSICIONAMENTO DAS CÂMERAS. AJUSTAR ALGORITMO DE DETECÇÃO DE POSIÇÃO.",
-      "5 – CAIXA MAL SELADA NA PARTE INFERIOR":
-        "VERIFICAR SELAGEM DA CAIXA E OBSERVAR SE EXISTEM DEMAIS EXEMPLARES ASSIM E FAZER A CORREÇÃO NECESSÁRIA.",
-      "6 – CAIXA DEFORMADA (PESO)":
-        "VERIFICAR SE AS DEMAIS CAIXAS ESTÃO COM PESO ALÉM DO MÁXIMO SUPORTADO PELO ROBÔ. AJUSTAR FORÇA DE MANIPULAÇÃO (CAIXA LEVE & CAIXA PESADA).",
-      "7 – CAIXA CAIU APÓS CHACOALHAR OS BOMBONS":
-        "VERIFICAR SE EXISTE ALGUMA OBSTRUÇÃO NO SISTEMA DE VÁCUO (FITA ADESIVA OU SUJIDADE). AJUSTAR VELOCIDADE DE MOVIMENTAÇÃO SE NECESSÁRIO.",
-      "8 – CAIXAS NÃO UNIFORMES NA LATERAL":
-        "VERIFICAR ALINHAMENTO DAS DEMAIS CAIXAS, REALIZAR TROCA DE PALLET CASO NECESSÁRIO. INSPECIONAR QUALIDADE DO PAPELÃO (UMIDADE).",
-      "0 – OUTRO (ESPECIFIQUE NAS OBSERVAÇÕES)":
-        "CONSULTE AS OBSERVAÇÕES PARA DETALHES ESPECÍFICOS DO PROBLEMA. REALIZE DIAGNÓSTICO DETALHADO CONFORME PROCEDIMENTO PADRÃO.",
-    }
-
-    return (
-      solutions[faultType] ||
-      "CONSULTE O MANUAL TÉCNICO E ENTRE EM CONTATO COM A EQUIPE DE MANUTENÇÃO PARA DIAGNÓSTICO DETALHADO."
     )
   }
 
@@ -485,7 +498,7 @@ export default function FaultControlSystem() {
               <div className="space-y-2">
                 <Label className="flex items-center gap-2 text-sm font-medium">
                   <Calendar className="w-4 h-4" />
-                  Data
+                  Data *
                 </Label>
                 <Input
                   type="text"
@@ -499,7 +512,7 @@ export default function FaultControlSystem() {
               <div className="space-y-2">
                 <Label className="flex items-center gap-2 text-sm font-medium">
                   <Clock className="w-4 h-4" />
-                  Horário
+                  Horário *
                 </Label>
                 <Input
                   type="text"
@@ -514,7 +527,7 @@ export default function FaultControlSystem() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
                 <AlertCircle className="w-4 h-4" />
-                Falha
+                Falha *
               </Label>
               <Select value={formData.fault} onValueChange={(value) => handleInputChange("fault", value)}>
                 <SelectTrigger>
@@ -534,7 +547,7 @@ export default function FaultControlSystem() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
                 <Clock className="w-4 h-4" />
-                Tempo Parado (min)
+                Tempo Parado (min) *
               </Label>
               <Input
                 type="number"
@@ -548,7 +561,7 @@ export default function FaultControlSystem() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
                 <Settings className="w-4 h-4" />
-                Carregou Caixas Manual?
+                Carregou Caixas Manual? *
               </Label>
               <RadioGroup
                 value={formData.manualBoxes}
@@ -570,7 +583,7 @@ export default function FaultControlSystem() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
                 <Settings className="w-4 h-4" />
-                Numero Robo
+                Numero Robo *
               </Label>
               <Select value={formData.robotNumber} onValueChange={(value) => handleInputChange("robotNumber", value)}>
                 <SelectTrigger>
@@ -590,7 +603,7 @@ export default function FaultControlSystem() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
                 <MapPin className="w-4 h-4" />
-                Cuba
+                Cuba *
               </Label>
               <Select value={formData.cuba} onValueChange={(value) => handleInputChange("cuba", value)}>
                 <SelectTrigger>
@@ -610,7 +623,7 @@ export default function FaultControlSystem() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
                 <Package className="w-4 h-4" />
-                Produto
+                Produto *
               </Label>
               <Select value={formData.product} onValueChange={(value) => handleInputChange("product", value)}>
                 <SelectTrigger>
@@ -641,10 +654,19 @@ export default function FaultControlSystem() {
               />
             </div>
 
+            {!isFormValid() && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-sm text-red-600 font-medium">
+                  ⚠️ Preencha todos os campos obrigatórios (marcados com *) para adicionar o registro
+                </p>
+              </div>
+            )}
+
             {/* Adicionar Registro Button */}
             <Button
               onClick={handleAddRecord}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-3"
+              disabled={!isFormValid()}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-3 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               Adicionar Registro
             </Button>
