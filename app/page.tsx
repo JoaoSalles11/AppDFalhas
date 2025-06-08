@@ -92,7 +92,7 @@ export default function FaultControlSystem() {
 
   // Power BI Configuration
   const POWER_BI_ENDPOINT =
-    "https://api.powerbi.com/beta/18a01ad8-9727-498a-a47d-17374c6fd9f7/datasets/616e30d8-57a1-4f54-9fd7-407a01b8d7bb/rows?experience=power-bi&key=wgVN2ZjTQ2x5JXXmFnPrQoRvdv4Q9cLa3YzDWOOGzRr7wfCrrgiNw1V0BYEO2j4vtDZIqOwHnKfry0rPoSi5RA%3D%3D"
+    "https://api.powerbi.com/beta/18a01ad8-9727-498a-a47d-17374c6fd9f7/datasets/44ba4438-6236-41e6-beb1-89bde61a1d69/rows?experience=power-bi&key=gM2k8y9wKx%2BwBnGlYzHvGxoRR1cQGUtOPp1moLIXtjjDFrUR52o18FosGJKZI1wVTLO0sFYuMlnVhNEOFqOCbw%3D%3D"
 
   useEffect(() => {
     const updateDateTime = () => {
@@ -184,51 +184,50 @@ export default function FaultControlSystem() {
   ]
 
   const formatRecordForPowerBI = (record: FaultRecord) => {
-    return {
-      Date: record.date,
-      Time: record.time,
-      FaultType: record.fault,
-      DowntimeMinutes: Number.parseInt(record.downtime) || 0,
-      ManualBoxLoading: record.manualBoxes,
-      RobotNumber: record.robotNumber,
-      Cuba: record.cuba,
-      Product: record.product,
-      Observations: record.observations || "",
-      OperatorRegistration: record.operatorRegistration,
-      OperatorName: record.operatorName,
-      Shift: record.shift,
-      RecordTime: record.recordTime,
-      RecordId: record.id,
-      Timestamp: new Date().toISOString(),
-    }
+  return {
+    RecordId: record.id ?? "",
+    Date: record.date ?? "",
+    Time: record.time ?? "",
+    FaultType: record.fault ?? "",
+    DowntimeMinutes: Number.parseFloat(record.downtime) || 0,
+    ManualBoxLoading: record.manualBoxes ?? "",
+    RobotNumber: record.robotNumber ?? "",
+    Cuba: record.cuba ?? "",
+    Product: record.product ?? "",
+    Observations: record.observations ?? "",
+    OperatorRegistration: record.operatorRegistration ?? "",
+    OperatorName: record.operatorName ?? "",
+    Shift: record.shift ?? "",
+    RecordTime: record.recordTime ?? "",
+    Timestamp: new Date().toISOString(),
   }
+}
 
-  const sendToPowerBI = async (record: FaultRecord): Promise<PowerBIResponse> => {
-    try {
-      console.log("🔄 Enviando dados para Power BI:", record.id)
 
-      const powerBIData = formatRecordForPowerBI(record)
+const sendToPowerBI = async (record: FaultRecord) => {
+  const powerBIData = formatRecordForPowerBI(record)
 
-      const response = await fetch(POWER_BI_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          rows: [powerBIData],
-        }),
-      })
+  try {
+    const response = await fetch(POWER_BI_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([powerBIData]), // ✅ envia como array, como o Power BI espera
+    })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("❌ Erro Power BI:", response.status, errorText)
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`HTTP ${response.status}: ${errorText}`)
+    }
 
-        return {
-          success: false,
-          error: `HTTP ${response.status}: ${errorText}`,
-          statusCode: response.status,
-        }
-      }
+    return true
+  } catch (error) {
+    console.error("❌ Erro ao enviar para o Power BI:", error)
+    return false
+  }
+}
+
 
       console.log("✅ Dados enviados com sucesso para Power BI:", record.id)
       return { success: true }
