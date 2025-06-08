@@ -17,6 +17,10 @@ import {
   Info,
   Package,
   MapPin,
+  Wifi,
+  WifiOff,
+  CheckCircle,
+  XCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -50,12 +54,23 @@ interface FaultRecord {
   operatorName: string
   shift: string
   recordTime: string
+  powerBIStatus?: "pending" | "success" | "failed"
+  powerBIError?: string
+}
+
+interface PowerBIResponse {
+  success: boolean
+  error?: string
+  statusCode?: number
 }
 
 export default function FaultControlSystem() {
   const [userSession, setUserSession] = useState<UserSession | null>(null)
   const [records, setRecords] = useState<FaultRecord[]>([])
   const [showDeveloperInfo, setShowDeveloperInfo] = useState(false)
+  const [isOnline, setIsOnline] = useState(true)
+  const [powerBIStatus, setPowerBIStatus] = useState<"idle" | "sending" | "success" | "error">("idle")
+  const [lastPowerBIError, setLastPowerBIError] = useState<string>("")
   const [loginData, setLoginData] = useState({
     registration: "",
     operatorName: "",
@@ -75,6 +90,10 @@ export default function FaultControlSystem() {
     observations: "",
   })
 
+  // Power BI Configuration
+  const POWER_BI_ENDPOINT =
+    "https://api.powerbi.com/beta/18a01ad8-9727-498a-a47d-17374c6fd9f7/datasets/616e30d8-57a1-4f54-9fd7-407a01b8d7bb/rows?experience=power-bi&key=wgVN2ZjTQ2x5JXXmFnPrQoRvdv4Q9cLa3YzDWOOGzRr7wfCrrgiNw1V0BYEO2j4vtDZIqOwHnKfry0rPoSi5RA%3D%3D"
+
   useEffect(() => {
     const updateDateTime = () => {
       const now = new Date()
@@ -93,6 +112,27 @@ export default function FaultControlSystem() {
 
     return () => clearInterval(interval)
   }, [])
+
+  // Monitor online status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
+
+  // Retry failed Power BI transmissions when back online
+  useEffect(() => {
+    if (isOnline) {
+      retryFailedTransmissions()
+    }
+  }, [isOnline])
 
   const shifts = ["1º TURNO (05:50 - 14:35)", "2º TURNO (14:03 - 22:42)", "3º TURNO (22:17 - 06:13)"]
 
@@ -142,6 +182,92 @@ export default function FaultControlSystem() {
     "SHOT",
     "STICK",
   ]
+
+  const formatRecordForPowerBI = (record: FaultRecord) => {
+    return {
+      Date: record.date,
+      Time: record.time,
+      FaultType: record.fault,
+      DowntimeMinutes: Number.parseInt(record.downtime) || 0,
+      ManualBoxLoading: record.manualBoxes,
+      RobotNumber: record.robotNumber,
+      Cuba: record.cuba,
+      Product: record.product,
+      Observations: record.observations || "",
+      OperatorRegistration: record.operatorRegistration,
+      OperatorName: record.operatorName,
+      Shift: record.shift,
+      RecordTime: record.recordTime,
+      RecordId: record.id,
+      Timestamp: new Date().toISOString(),
+    }
+  }
+
+  const sendToPowerBI = async (record: FaultRecord): Promise<PowerBIResponse> => {
+    try {
+      console.log("🔄 Enviando dados para Power BI:", record.id)
+
+      const powerBIData = formatRecordForPowerBI(record)
+
+      const response = await fetch(POWER_BI_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          rows: [powerBIData],
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("❌ Erro Power BI:", response.status, errorText)
+
+        return {
+          success: false,
+          error: `HTTP ${response.status}: ${errorText}`,
+          statusCode: response.status,
+        }
+      }
+
+      console.log("✅ Dados enviados com sucesso para Power BI:", record.id)
+      return { success: true }
+    } catch (error) {
+      console.error("❌ Erro de rede ao enviar para Power BI:", error)
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Erro de conexão desconhecido",
+      }
+    }
+  }
+
+  const retryFailedTransmissions = async () => {
+    const failedRecords = records.filter((record) => record.powerBIStatus === "failed")
+
+    if (failedRecords.length === 0) return
+
+    console.log(`🔄 Tentando reenviar ${failedRecords.length} registros falhados para Power BI`)
+
+    for (const record of failedRecords) {
+      const result = await sendToPowerBI(record)
+
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.id === record.id
+            ? {
+                ...r,
+                powerBIStatus: result.success ? "success" : "failed",
+                powerBIError: result.success ? undefined : result.error,
+              }
+            : r,
+        ),
+      )
+
+      // Small delay between retries
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
 
   const handleLogin = () => {
     if (!loginData.registration || !loginData.operatorName || !loginData.shift) {
@@ -241,7 +367,7 @@ export default function FaultControlSystem() {
     return validateForm().length === 0
   }
 
-  const handleAddRecord = () => {
+  const handleAddRecord = async () => {
     const missingFields = validateForm()
 
     if (missingFields.length > 0) {
@@ -263,9 +389,14 @@ export default function FaultControlSystem() {
       operatorName: userSession.operatorName,
       shift: userSession.shift,
       recordTime: new Date().toLocaleString("pt-BR"),
+      powerBIStatus: "pending",
     }
 
+    // Add record to local state first
     setRecords((prev) => [...prev, newRecord])
+
+    // Show success message immediately
+    alert("Registro adicionado com sucesso!")
 
     // Reset form
     const now = new Date()
@@ -281,7 +412,68 @@ export default function FaultControlSystem() {
       observations: "",
     })
 
-    alert("Registro adicionado com sucesso!")
+    // Send to Power BI asynchronously
+    if (isOnline) {
+      setPowerBIStatus("sending")
+
+      try {
+        const result = await sendToPowerBI(newRecord)
+
+        // Update record status
+        setRecords((prev) =>
+          prev.map((record) =>
+            record.id === newRecord.id
+              ? {
+                  ...record,
+                  powerBIStatus: result.success ? "success" : "failed",
+                  powerBIError: result.success ? undefined : result.error,
+                }
+              : record,
+          ),
+        )
+
+        if (result.success) {
+          setPowerBIStatus("success")
+          setTimeout(() => setPowerBIStatus("idle"), 3000)
+        } else {
+          setPowerBIStatus("error")
+          setLastPowerBIError(result.error || "Erro desconhecido")
+          setTimeout(() => setPowerBIStatus("idle"), 5000)
+        }
+      } catch (error) {
+        console.error("Erro inesperado ao enviar para Power BI:", error)
+        setPowerBIStatus("error")
+        setLastPowerBIError("Erro inesperado de conexão")
+
+        // Update record status
+        setRecords((prev) =>
+          prev.map((record) =>
+            record.id === newRecord.id
+              ? {
+                  ...record,
+                  powerBIStatus: "failed",
+                  powerBIError: "Erro inesperado de conexão",
+                }
+              : record,
+          ),
+        )
+
+        setTimeout(() => setPowerBIStatus("idle"), 5000)
+      }
+    } else {
+      // Mark as failed if offline
+      setRecords((prev) =>
+        prev.map((record) =>
+          record.id === newRecord.id
+            ? {
+                ...record,
+                powerBIStatus: "failed",
+                powerBIError: "Sem conexão com a internet",
+              }
+            : record,
+        ),
+      )
+    }
   }
 
   const handleExport = () => {
@@ -291,10 +483,10 @@ export default function FaultControlSystem() {
     }
 
     const csvContent = [
-      "Data,Horário,Falha,Tempo Parado (min),Carregou Caixas Manual,Numero Robo,Cuba,Produto,Observações,Matrícula Operador,Nome Operador,Turno,Hora do Registro",
+      "Data,Horário,Falha,Tempo Parado (min),Carregou Caixas Manual,Numero Robo,Cuba,Produto,Observações,Matrícula Operador,Nome Operador,Turno,Hora do Registro,Status Power BI",
       ...records.map(
         (record) =>
-          `${record.date},${record.time},"${record.fault}",${record.downtime},${record.manualBoxes},${record.robotNumber},"${record.cuba}","${record.product}","${record.observations}",${record.operatorRegistration},"${record.operatorName}","${record.shift}",${record.recordTime}`,
+          `${record.date},${record.time},"${record.fault}",${record.downtime},${record.manualBoxes},${record.robotNumber},"${record.cuba}","${record.product}","${record.observations}",${record.operatorRegistration},"${record.operatorName}","${record.shift}",${record.recordTime},${record.powerBIStatus || "N/A"}`,
       ),
     ].join("\n")
 
@@ -322,21 +514,7 @@ export default function FaultControlSystem() {
         totalRecords: records.length,
         exportedBy: userSession?.operatorName || "Sistema",
       },
-      data: records.map((record) => ({
-        Date: record.date,
-        Time: record.time,
-        FaultType: record.fault,
-        DowntimeMinutes: Number.parseInt(record.downtime),
-        ManualBoxLoading: record.manualBoxes,
-        RobotNumber: record.robotNumber,
-        Cuba: record.cuba,
-        Product: record.product,
-        Observations: record.observations,
-        OperatorRegistration: record.operatorRegistration,
-        OperatorName: record.operatorName,
-        Shift: record.shift,
-        RecordTime: record.recordTime,
-      })),
+      data: records.map((record) => formatRecordForPowerBI(record)),
     }
 
     // Create JSON file for Power BI import
@@ -362,6 +540,34 @@ export default function FaultControlSystem() {
         "O arquivo contém todos os dados de falhas com metadados para análise completa.",
     )
   }
+
+  const getPowerBIStatusIcon = () => {
+    switch (powerBIStatus) {
+      case "sending":
+        return <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+      case "success":
+        return <CheckCircle className="w-4 h-4 text-green-500" />
+      case "error":
+        return <XCircle className="w-4 h-4 text-red-500" />
+      default:
+        return null
+    }
+  }
+
+  const getPowerBIStatusText = () => {
+    switch (powerBIStatus) {
+      case "sending":
+        return "Enviando para Power BI..."
+      case "success":
+        return "Enviado com sucesso!"
+      case "error":
+        return `Erro: ${lastPowerBIError}`
+      default:
+        return ""
+    }
+  }
+
+  const failedRecordsCount = records.filter((r) => r.powerBIStatus === "failed").length
 
   // Login Screen
   if (!userSession) {
@@ -472,17 +678,62 @@ export default function FaultControlSystem() {
         </div>
         <div className="flex items-center justify-between mt-4">
           <h2 className="text-2xl font-bold">Controle de Falhas</h2>
-          <div className="flex justify-center">
-            <Image
-              src="/mondelez-logo.png"
-              alt="Mondelez International"
-              width={100}
-              height={35}
-              className="object-contain"
-            />
+          <div className="flex items-center gap-4">
+            {/* Connection Status */}
+            <div className="flex items-center gap-2 text-sm">
+              {isOnline ? <Wifi className="w-4 h-4 text-green-300" /> : <WifiOff className="w-4 h-4 text-red-300" />}
+              <span>{isOnline ? "Online" : "Offline"}</span>
+            </div>
+
+            <div className="flex justify-center">
+              <Image
+                src="/mondelez-logo.png"
+                alt="Mondelez International"
+                width={100}
+                height={35}
+                className="object-contain"
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Power BI Status Bar */}
+      {(powerBIStatus !== "idle" || failedRecordsCount > 0) && (
+        <div
+          className={`px-6 py-2 text-sm flex items-center justify-between ${
+            powerBIStatus === "error" || failedRecordsCount > 0
+              ? "bg-red-50 border-b border-red-200"
+              : powerBIStatus === "success"
+                ? "bg-green-50 border-b border-green-200"
+                : "bg-blue-50 border-b border-blue-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {getPowerBIStatusIcon()}
+            <span
+              className={
+                powerBIStatus === "error" || failedRecordsCount > 0
+                  ? "text-red-700"
+                  : powerBIStatus === "success"
+                    ? "text-green-700"
+                    : "text-blue-700"
+              }
+            >
+              {getPowerBIStatusText()}
+              {failedRecordsCount > 0 &&
+                powerBIStatus === "idle" &&
+                ` • ${failedRecordsCount} registro(s) pendente(s) de envio`}
+            </span>
+          </div>
+
+          {failedRecordsCount > 0 && isOnline && (
+            <Button size="sm" variant="outline" onClick={retryFailedTransmissions} className="text-xs">
+              Tentar Novamente
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -707,12 +958,13 @@ export default function FaultControlSystem() {
           disabled={records.length === 0}
         >
           <BarChart3 className="w-4 h-4 mr-2" />
-          Integrar Power BI
+          Exportar Power BI
         </Button>
 
         {records.length > 0 && (
           <p className="text-sm text-gray-600 mt-2 self-center">
-            {records.length} registro(s) disponível(is) para exportação
+            {records.length} registro(s) • {records.filter((r) => r.powerBIStatus === "success").length} enviado(s) para
+            Power BI
           </p>
         )}
       </div>
