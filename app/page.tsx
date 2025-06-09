@@ -204,7 +204,7 @@ export default function FaultControlSystem() {
 }
 
 
-const sendToPowerBI = async (record: FaultRecord) => {
+const sendToPowerBI = async (record: FaultRecord): Promise<PowerBIResponse> => {
   const powerBIData = formatRecordForPowerBI(record)
 
   try {
@@ -218,13 +218,23 @@ const sendToPowerBI = async (record: FaultRecord) => {
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`HTTP ${response.status}: ${errorText}`)
+      console.error("❌ Erro HTTP ao enviar para Power BI:", errorText)
+      return {
+        success: false,
+        statusCode: response.status,
+        error: `HTTP ${response.status}: ${errorText}`,
+      }
     }
 
-    return true
+    console.log("✅ Dados enviados com sucesso para Power BI:", record.id)
+    return { success: true }
+
   } catch (error) {
-    console.error("❌ Erro ao enviar para o Power BI:", error)
-    return false
+    console.error("❌ Erro de rede ao enviar para Power BI:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro de conexão desconhecido",
+    }
   }
 }
 
